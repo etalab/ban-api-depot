@@ -8,7 +8,7 @@ import {
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Readable } from 'stream';
-import { ObjectId } from 'mongodb';
+import { ObjectId } from 'bson';
 
 @Injectable()
 export class S3Service {
@@ -58,10 +58,10 @@ export class S3Service {
     );
   }
 
-  public async writeFile(buffer: Buffer): Promise<ObjectId> {
+  public async writeFile(buffer: Buffer): Promise<string> {
     try {
-      const fileId = new ObjectId();
-      await this.uploadS3File(fileId.toHexString(), buffer);
+      const fileId = new ObjectId().toHexString();
+      await this.uploadS3File(fileId, buffer);
       return fileId;
     } catch (error) {
       throw new HttpException(

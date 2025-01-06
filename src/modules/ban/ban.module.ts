@@ -1,5 +1,5 @@
 import { HttpModule } from '@nestjs/axios';
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
 
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BanService } from './ban.service';
@@ -18,7 +18,7 @@ import { BanService } from './ban.service';
       inject: [ConfigService],
     }),
   ],
-  providers: [BanService],
+  providers: [BanService, Logger],
   controllers: [],
   exports: [BanService],
 })

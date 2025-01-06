@@ -33,7 +33,7 @@ export class ClientGuard implements CanActivate {
       );
     }
 
-    if (!client.active) {
+    if (!client.isActive) {
       throw new HttpException(
         'Le client est actuellement désactivé',
         HttpStatus.FORBIDDEN,

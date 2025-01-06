@@ -1,3 +1,8 @@
+import {
+  PostgreSqlContainer,
+  StartedPostgreSqlContainer,
+} from '@testcontainers/postgresql';
+import { Client } from 'pg';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   Global,
@@ -5,17 +10,23 @@ import {
   Module,
   ValidationPipe,
 } from '@nestjs/common';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import { MongooseModule, getModelToken } from '@nestjs/mongoose';
-import { Connection, connect, Model } from 'mongoose';
-import { ObjectId } from 'mongodb';
 import * as request from 'supertest';
 import { parse } from 'date-fns';
 
-import { Client } from '@/modules/client/client.schema';
-import { Revision } from '@/modules/revision/revision.schema';
+import {
+  AuthorizationStrategyEnum,
+  Client as Client2,
+} from '@/modules/client/client.entity';
+import { Revision } from '@/modules/revision/revision.entity';
 import { StatModule } from './stats.module';
 import { MailerService } from '@nestjs-modules/mailer';
+import { Mandataire } from '../mandataire/mandataire.entity';
+import { Habilitation } from '../habilitation/habilitation.entity';
+import { File } from '../file/file.entity';
+import { Perimeter } from '../chef_de_file/perimeters.entity';
+import { ChefDeFile } from '../chef_de_file/chef_de_file.entity';
+import { getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 
 process.env.FC_FS_ID = 'coucou';
 process.env.ADMIN_TOKEN = 'xxxx';
@@ -36,19 +47,50 @@ class MailerModule {}
 
 describe('STATS MODULE', () => {
   let app: INestApplication;
-  let mongod: MongoMemoryServer;
-  let mongoConnection: Connection;
-  let clientModel: Model<Client>;
-  let revisionModel: Model<Revision>;
+  let postgresContainer: StartedPostgreSqlContainer;
+  let postgresClient: Client;
+  let mandataireRepository: Repository<Mandataire>;
+  let clientRepository: Repository<Client2>;
+  let chefDeFileRepository: Repository<ChefDeFile>;
+  let habilitationRepository: Repository<Habilitation>;
+  let revisionRepository: Repository<Revision>;
+  let fileRepository: Repository<File>;
 
   beforeAll(async () => {
     // INIT DB
-    mongod = await MongoMemoryServer.create();
-    const uri = mongod.getUri();
-    mongoConnection = (await connect(uri)).connection;
+    postgresContainer = await new PostgreSqlContainer().start();
+    postgresClient = new Client({
+      host: postgresContainer.getHost(),
+      port: postgresContainer.getPort(),
+      database: postgresContainer.getDatabase(),
+      user: postgresContainer.getUsername(),
+      password: postgresContainer.getPassword(),
+    });
+    await postgresClient.connect();
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [MongooseModule.forRoot(uri), StatModule, MailerModule],
+      imports: [
+        TypeOrmModule.forRoot({
+          type: 'postgres',
+          host: postgresContainer.getHost(),
+          port: postgresContainer.getPort(),
+          username: postgresContainer.getUsername(),
+          password: postgresContainer.getPassword(),
+          database: postgresContainer.getDatabase(),
+          synchronize: true,
+          entities: [
+            Client2,
+            ChefDeFile,
+            Perimeter,
+            Habilitation,
+            Revision,
+            File,
+            Mandataire,
+          ],
+        }),
+        StatModule,
+        MailerModule,
+      ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
@@ -56,21 +98,62 @@ describe('STATS MODULE', () => {
     await app.init();
 
     // INIT MODEL
-    clientModel = app.get<Model<Client>>(getModelToken(Client.name));
-    revisionModel = app.get<Model<Revision>>(getModelToken(Revision.name));
+    mandataireRepository = app.get(getRepositoryToken(Mandataire));
+    clientRepository = app.get(getRepositoryToken(Client2));
+    chefDeFileRepository = app.get(getRepositoryToken(ChefDeFile));
+    habilitationRepository = app.get(getRepositoryToken(Habilitation));
+    revisionRepository = app.get(getRepositoryToken(Revision));
+    fileRepository = app.get(getRepositoryToken(File));
   });
 
   afterAll(async () => {
-    await mongoConnection.dropDatabase();
-    await mongoConnection.close();
-    await mongod.stop();
+    await postgresClient.end();
+    await postgresContainer.stop();
     await app.close();
   });
 
   afterEach(async () => {
-    await clientModel.deleteMany({});
-    await revisionModel.deleteMany({});
+    await mandataireRepository.delete({});
+    await clientRepository.delete({});
+    await chefDeFileRepository.delete({});
+    await habilitationRepository.delete({});
+    await revisionRepository.delete({});
+    await fileRepository.delete({});
   });
+
+  async function createClient(props: Partial<Client2> = {}): Promise<Client2> {
+    const mandataireToSave = mandataireRepository.create({
+      nom: 'mandataire',
+      email: 'mandataire@test.com',
+    });
+    const mandataire = await mandataireRepository.save(mandataireToSave);
+    const chefDeFileToSave = chefDeFileRepository.create({
+      nom: 'chefDeFile',
+      email: 'chefDeFile@test.fr',
+      isEmailPublic: true,
+    });
+    const chefDeFile = await chefDeFileRepository.save(chefDeFileToSave);
+    const clientToSave: Client2 = clientRepository.create({
+      ...props,
+      nom: 'test',
+      token: 'xxxx',
+      authorizationStrategy: AuthorizationStrategyEnum.CHEF_DE_FILE,
+      mandataireId: mandataire.id,
+      chefDeFileId: chefDeFile.id,
+    });
+    return clientRepository.save(clientToSave);
+  }
+
+  async function createRevision(
+    props: Partial<Revision> = {},
+  ): Promise<Revision> {
+    const client = await createClient();
+    const revisionToSave: Revision = revisionRepository.create({
+      clientId: client.id,
+      ...props,
+    });
+    return revisionRepository.save(revisionToSave);
+  }
 
   describe('GET /stats/firsts-publications', () => {
     it('GET /stats/firsts-publications forbiden', async () => {
@@ -112,19 +195,16 @@ describe('STATS MODULE', () => {
     });
 
     it('GET /stats/firsts-publications with date', async () => {
-      await revisionModel.create({
+      await createRevision({
         codeCommune: '91400',
-        client: new ObjectId(),
         publishedAt: parse('2000-01-02', 'yyyy-MM-dd', new Date()),
       });
-      await revisionModel.create({
+      await createRevision({
         codeCommune: '91400',
-        client: new ObjectId(),
         publishedAt: parse('2000-01-04', 'yyyy-MM-dd', new Date()),
       });
-      await revisionModel.create({
+      await createRevision({
         codeCommune: '91400',
-        client: new ObjectId(),
         publishedAt: parse('2000-03-02', 'yyyy-MM-dd', new Date()),
       });
 
@@ -172,14 +252,12 @@ describe('STATS MODULE', () => {
     });
 
     it('GET /stats/publications with date', async () => {
-      await revisionModel.create({
+      await createRevision({
         codeCommune: '91400',
-        client: new ObjectId(),
         publishedAt: parse('2000-01-02', 'yyyy-MM-dd', new Date()),
       });
-      await revisionModel.create({
+      await createRevision({
         codeCommune: '91400',
-        client: new ObjectId(),
         publishedAt: parse('2000-01-02', 'yyyy-MM-dd', new Date()),
       });
       const response = await request(app.getHttpServer())

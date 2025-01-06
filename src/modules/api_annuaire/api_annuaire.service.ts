@@ -1,16 +1,14 @@
-import { Injectable } from '@nestjs/common';
-import { deburr } from 'lodash';
+import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { AxiosError, AxiosRequestConfig } from 'axios';
 import { catchError, firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class ApiAnnuaireService {
-  constructor(private readonly httpService: HttpService) {}
-
-  private normalize(str: string) {
-    return deburr(str).toLowerCase();
-  }
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly logger: Logger,
+  ) {}
 
   private validateEmail(email: string) {
     const re =
@@ -18,7 +16,7 @@ export class ApiAnnuaireService {
     return re.test(String(email).toLowerCase());
   }
 
-  public async getEmailCommune(codeCommune: string): Promise<string> {
+  public async getEmailsCommune(codeCommune: string): Promise<string[]> {
     try {
       const url: string = `/catalog/datasets/api-lannuaire-administration/records?where=pivot%20LIKE%20"mairie"%20AND%20code_insee_commune="${codeCommune}"&limit=100`;
       const options: AxiosRequestConfig = { responseType: 'json' };
@@ -29,26 +27,36 @@ export class ApiAnnuaireService {
           }),
         ),
       );
-      const mairie =
-        data.results.find(
-          ({ nom }) => !this.normalize(nom).includes('deleguee'),
-        ) || data.results[0];
 
-      if (!mairie.adresse_courriel || mairie.adresse_courriel === '') {
+      const mairies: any[] = data.results.filter(
+        ({ adresse_courriel }) => adresse_courriel && adresse_courriel !== '',
+      );
+
+      if (mairies.length <= 0) {
         throw new Error('L’adresse email n’est pas trouvé');
       }
 
-      const emails = mairie.adresse_courriel.split(';');
-      const email = emails.shift();
+      const emails: string[] = mairies
+        .reduce(
+          (accumulator, { adresse_courriel }) => [
+            ...accumulator,
+            ...adresse_courriel.split(';'),
+          ],
+          [],
+        )
+        .filter((email) => this.validateEmail(email));
 
-      if (this.validateEmail(email)) {
-        return email;
+      if (emails.length > 0) {
+        return emails;
       }
 
-      throw new Error(`L’adresse email " ${email} " ne peut pas être utilisée`);
+      throw new Error(
+        `Les adresses emails " ${emails.join(',')} " ne peut pas être utilisée`,
+      );
     } catch (error) {
-      console.error(
+      this.logger.error(
         `Une erreur s’est produite lors de la récupération de l’adresse email de la mairie (Code commune: ${codeCommune}).`,
+        ApiAnnuaireService.name,
         error,
       );
     }

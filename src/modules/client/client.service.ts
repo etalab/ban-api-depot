@@ -1,25 +1,25 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { FilterQuery, Model, QueryWithHelpers, Types } from 'mongoose';
 import { omit } from 'lodash';
 
 import { generateToken } from '@/lib/utils/token.utils';
 import { MandataireService } from '@/modules/mandataire/mandataire.service';
 import { ChefDeFileService } from '@/modules/chef_de_file/chef_de_file.service';
-import { AuthorizationStrategyEnum, Client } from './client.schema';
 import { PublicClient } from './dto/public_client.dto';
-import { ChefDeFile } from '../chef_de_file/chef_de_file.schema';
-import { Mandataire } from '../mandataire/mandataire.schema';
 import { MailerService } from '@nestjs-modules/mailer';
 import { CreateClientDTO } from './dto/create_client.dto';
 import { UpdateClientDTO } from './dto/update_client.dto';
 import { ConfigService } from '@nestjs/config';
+import { ChefDeFile } from '../chef_de_file/chef_de_file.entity';
+import { Mandataire } from '../mandataire/mandataire.entity';
+import { AuthorizationStrategyEnum, Client } from './client.entity';
+import { InjectRepository } from '@nestjs/typeorm';
+import { FindOptionsSelect, FindOptionsWhere, Repository } from 'typeorm';
 
 @Injectable()
 export class ClientService {
   constructor(
-    @InjectModel(Client.name)
-    private clientModel: Model<Client>,
+    @InjectRepository(Client)
+    private clientRepository: Repository<Client>,
     private mandataireService: MandataireService,
     private chefDeFileService: ChefDeFileService,
     private readonly configService: ConfigService,
@@ -27,40 +27,29 @@ export class ClientService {
   ) {}
 
   async findMany(
-    filter?: FilterQuery<Client>,
-    selector: Record<string, number> = null,
-    limit: number = null,
-    offset: number = null,
+    where: FindOptionsWhere<Client>,
+    select?: FindOptionsSelect<Client>,
   ): Promise<Client[]> {
-    const query: QueryWithHelpers<
-      Array<Client>,
-      Client
-    > = this.clientModel.find(filter);
-
-    if (selector) {
-      query.select(selector);
-    }
-    if (limit) {
-      query.limit(limit);
-    }
-    if (offset) {
-      query.skip(offset);
-    }
-
-    return query.lean().exec();
+    return this.clientRepository.find({
+      where,
+      ...(select && { select }),
+    });
   }
 
-  public async findOne(filter): Promise<Client> {
-    return await this.clientModel.findOne(filter).lean().exec();
+  public async findOne(where: FindOptionsWhere<Client>): Promise<Client> {
+    return this.clientRepository.findOne({
+      where,
+    });
   }
 
-  public async findOneOrFail(
-    clientId: string | Types.ObjectId,
-  ): Promise<Client> {
-    const client = await this.clientModel
-      .findOne({ _id: clientId })
-      .lean()
-      .exec();
+  public async findOneOrFail(clientId: string): Promise<Client> {
+    const where: FindOptionsWhere<Client> = {
+      id: clientId,
+    };
+    const client = await this.clientRepository.findOne({
+      where,
+      withDeleted: true,
+    });
 
     if (!client) {
       throw new HttpException(
@@ -74,21 +63,25 @@ export class ClientService {
 
   public async createOne(body: CreateClientDTO): Promise<Client> {
     let chefDeFile: ChefDeFile;
-    if (body.chefDeFile) {
-      chefDeFile = await this.chefDeFileService.findOneOrFail(body.chefDeFile);
+    if (body.chefDeFileId) {
+      chefDeFile = await this.chefDeFileService.findOneOrFail(
+        body.chefDeFileId,
+      );
     }
 
     const mandataire: Mandataire = await this.mandataireService.findOneOrFail(
-      body.mandataire,
+      body.mandataireId,
     );
 
-    const client = await this.clientModel.create({
+    const entityToSave: Client = this.clientRepository.create({
       ...body,
       token: generateToken(),
-      authorizationStrategy: body.chefDeFile
+      authorizationStrategy: body.chefDeFileId
         ? AuthorizationStrategyEnum.CHEF_DE_FILE
         : AuthorizationStrategyEnum.HABILITATION,
     });
+    const client = await this.clientRepository.save(entityToSave);
+
     await this.mailerService.sendMail({
       to: mandataire.email,
       subject: 'Accès à l’API dépôt d’une Base Adresse Locale',
@@ -96,7 +89,7 @@ export class ClientService {
       bcc: this.configService.get('SMTP_BCC'),
       context: {
         apiUrl: this.configService.get('API_DEPOT_URL'),
-        client: client.toObject(),
+        client: client,
         mandataire,
         chefDeFile,
       },
@@ -109,20 +102,15 @@ export class ClientService {
     clientId: string,
     changes: UpdateClientDTO,
   ): Promise<Client> {
-    if (changes.chefDeFile) {
-      await this.chefDeFileService.findOneOrFail(changes.chefDeFile);
+    if (changes.chefDeFileId) {
+      await this.chefDeFileService.findOneOrFail(changes.chefDeFileId);
     }
-    if (changes.mandataire) {
-      await this.mandataireService.findOneOrFail(changes.mandataire);
+    if (changes.mandataireId) {
+      await this.mandataireService.findOneOrFail(changes.mandataireId);
     }
 
-    const client: Client = await this.clientModel.findOneAndUpdate(
-      { _id: clientId },
-      { $set: changes },
-      { returnDocument: 'after' },
-    );
-
-    return client;
+    await this.clientRepository.update({ id: clientId }, changes);
+    return this.clientRepository.findOneBy({ id: clientId });
   }
 
   public filterSensitiveFields(client: Client): Omit<Client, 'token'> {
@@ -130,73 +118,43 @@ export class ClientService {
   }
 
   public async findAllPublicClients(): Promise<PublicClient[]> {
-    const clients = await this.clientModel
-      .find({}, { _id: 1, id: 1, nom: 1, chefDeFile: 1, mandataire: 1 })
-      .lean()
-      .exec();
-
-    const mandataires: Mandataire[] = await this.mandataireService.findMany({});
-    const chefDeFiles: ChefDeFile[] = await this.chefDeFileService.findMany({});
-
-    return clients.map((client: Client) => {
-      const publicClient: PublicClient = {
-        _id: client._id,
-        id: client.id,
-        nom: client.nom,
-        mandataire:
-          mandataires.find(
-            ({ _id }) => _id.toHexString() === client.mandataire.toHexString(),
-          )?.nom || null,
-      };
-      if (client.chefDeFile) {
-        const chefDeFile = chefDeFiles.find(
-          ({ _id }) => client.chefDeFile.toHexString() === _id.toHexString(),
-        );
-        publicClient.chefDeFile = chefDeFile.nom;
-        if (chefDeFile.isEmailPublic) {
-          publicClient.chefDeFileEmail = chefDeFile.email;
-        }
-      }
-      return publicClient;
+    const clients = await this.clientRepository.find({
+      relations: ['mandataire', 'chefDeFile'],
     });
+
+    return clients.map((client: Client) => ({
+      id: client.id,
+      legacyId: client.legacyId,
+      nom: client.nom,
+      mandataire: client.mandataire.nom,
+      chefDeFile: client.chefDeFile?.nom,
+      chefDeFileEmail: client.chefDeFile?.isEmailPublic
+        ? client.chefDeFile?.email
+        : null,
+    }));
   }
 
-  public async findPublicClient(
-    clientId: Types.ObjectId,
-  ): Promise<PublicClient> {
-    const client = await this.clientModel
-      .findOne(
-        { _id: clientId },
-        { _id: 1, id: 1, nom: 1, chefDeFile: 1, mandataire: 1 },
-      )
-      .lean()
-      .exec();
+  public async findPublicClient(clientId: string): Promise<PublicClient> {
+    const client = await this.clientRepository.findOne({
+      where: { id: clientId },
+      relations: ['mandataire', 'chefDeFile'],
+    });
+
     if (!client) {
       throw new HttpException(
         `Client ${clientId} not found`,
         HttpStatus.NOT_FOUND,
       );
     }
-
-    const mandataire = await this.mandataireService.findOneOrFail(
-      client.mandataire,
-    );
-    const publicClient: PublicClient = {
-      _id: client._id,
+    return {
       id: client.id,
+      legacyId: client.legacyId,
       nom: client.nom,
-      mandataire: mandataire.nom,
+      mandataire: client.mandataire.nom,
+      chefDeFile: client.chefDeFile?.nom || null,
+      chefDeFileEmail: client.chefDeFile?.isEmailPublic
+        ? client.chefDeFile?.email
+        : null,
     };
-
-    if (client.chefDeFile) {
-      const chefDeFile = await this.chefDeFileService.findOneOrFail(
-        client.chefDeFile,
-      );
-      publicClient.chefDeFile = chefDeFile.nom;
-      if (chefDeFile.isEmailPublic) {
-        publicClient.chefDeFileEmail = chefDeFile.email;
-      }
-    }
-    return publicClient;
   }
 }

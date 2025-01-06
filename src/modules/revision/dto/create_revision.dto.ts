@@ -7,7 +7,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-import { Context } from '../revision.schema';
+import { Context } from '../revision.entity';
 
 export class ContextDTO implements Context {
   @IsString()

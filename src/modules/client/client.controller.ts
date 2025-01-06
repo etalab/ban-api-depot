@@ -23,10 +23,10 @@ import { Response } from 'express';
 import { AdminGuard } from '@/lib/class/guards/admin.guard';
 import { CustomRequest } from '@/lib/types/request.type';
 import { ClientService } from './client.service';
-import { Client } from './client.schema';
 import { UpdateClientDTO } from './dto/update_client.dto';
 import { ConfigService } from '@nestjs/config';
 import { CreateClientDTO } from './dto/create_client.dto';
+import { Client } from './client.entity';
 
 @ApiTags('clients')
 @Controller('clients')
@@ -112,7 +112,7 @@ export class ClientController {
     @Res() res: Response,
   ) {
     const client: Client = await this.clientService.updateOne(
-      req.client._id.toString(),
+      req.client.id,
       body,
     );
     const clientSafe: Omit<Client, 'token'> =

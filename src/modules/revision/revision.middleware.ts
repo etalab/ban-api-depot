@@ -8,8 +8,8 @@ import { Response, NextFunction } from 'express';
 
 import { CustomRequest } from '@/lib/types/request.type';
 import { RevisionService } from './revision.service';
-import { Revision } from './revision.schema';
-import { isObjectIdOrHexString } from 'mongoose';
+import { Revision } from './revision.entity';
+import { ObjectId } from 'bson';
 
 @Injectable()
 export class RevisionMiddleware implements NestMiddleware {
@@ -18,7 +18,7 @@ export class RevisionMiddleware implements NestMiddleware {
   async use(req: CustomRequest, res: Response, next: NextFunction) {
     const { revisionId } = req.params;
     if (revisionId) {
-      if (!isObjectIdOrHexString(revisionId)) {
+      if (!ObjectId.isValid(revisionId)) {
         throw new HttpException(
           `Revision Id ${revisionId} is not ObjectId`,
           HttpStatus.BAD_REQUEST,

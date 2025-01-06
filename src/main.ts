@@ -4,9 +4,12 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
 
 import { AppModule } from './app.module';
+import { WinstonLogger } from './modules/logger/logger.service';
+import { Logger } from './lib/utils/logger.utils';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
+    logger: new WinstonLogger(Logger),
     cors: true,
   });
 

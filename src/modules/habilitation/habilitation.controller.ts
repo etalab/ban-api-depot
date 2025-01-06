@@ -25,7 +25,7 @@ import { CustomRequest } from '@/lib/types/request.type';
 import { AdminGuard } from '@/lib/class/guards/admin.guard';
 import { ClientGuard } from '@/lib/class/guards/client.guard';
 import { HabilitationService } from './habilitation.service';
-import { Habilitation, TypeStrategyEnum } from './habilitation.schema';
+import { Habilitation, TypeStrategyEnum } from './habilitation.entity';
 import { ValidateCodePinRequestDTO } from './dto/validate_code_pin.dto';
 import {
   FranceConnectAuthGuard,
@@ -83,7 +83,7 @@ export class HabilitationController {
   @UseGuards(AdminGuard)
   async validateOne(@Req() req: CustomRequest, @Res() res: Response) {
     const habilitation: Habilitation =
-      await this.habilitationService.acceptHabilitation(req.habilitation._id, {
+      await this.habilitationService.acceptHabilitation(req.habilitation.id, {
         strategy: { type: TypeStrategyEnum.INTERNAL },
       });
     res.status(HttpStatus.OK).json(habilitation);

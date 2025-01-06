@@ -1,4 +1,3 @@
-
 export const TOKEN_LENGTH = 32;
 
 export function generateToken(): string {

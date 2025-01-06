@@ -1,18 +1,18 @@
 import { MiddlewareConsumer, Module } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
 
 import { MandataireModule } from '@/modules/mandataire/mandataire.module';
 import { ChefDeFileModule } from '@/modules/chef_de_file/chef_de_file.module';
-import { Client, ClientSchema } from './client.schema';
 import { ClientService } from './client.service';
 import { ClientController } from './client.controller';
 import { ClientMiddleware } from './client.middleware';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { Client } from './client.entity';
 
 @Module({
   imports: [
     ConfigModule,
-    MongooseModule.forFeature([{ name: Client.name, schema: ClientSchema }]),
+    TypeOrmModule.forFeature([Client]),
     MandataireModule,
     ChefDeFileModule,
   ],

@@ -12,7 +12,7 @@ import { CustomRequest } from '@/lib/types/request.type';
 export class RevisionGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const req: CustomRequest = context.getArgByIndex(0);
-    if (req.revision.client.toString() !== req.client._id.toString()) {
+    if (req.revision.clientId !== req.client.id) {
       throw new HttpException(
         'Vous n’êtes pas autorisé à accéder à cette révision',
         HttpStatus.FORBIDDEN,

@@ -3,13 +3,9 @@ import {
   IsBoolean,
   IsMongoId,
   IsNotEmpty,
-  IsNotEmptyObject,
   IsOptional,
   IsString,
-  ValidateNested,
 } from 'class-validator';
-import { Options } from '../client.schema';
-import { Type } from 'class-transformer';
 
 export class UpdateClientDTO {
   @IsOptional()
@@ -22,24 +18,23 @@ export class UpdateClientDTO {
   @IsNotEmpty()
   @IsMongoId()
   @ApiProperty({ type: String, required: false })
-  mandataire?: string;
+  mandataireId?: string;
 
   @IsOptional()
   @IsNotEmpty()
   @IsMongoId()
   @ApiProperty({ type: String, required: false })
-  chefDeFile?: string;
+  chefDeFileId?: string;
 
   @IsOptional()
   @IsNotEmpty()
   @IsBoolean()
   @ApiProperty({ required: false })
-  active?: boolean;
+  isActive?: boolean;
 
   @IsOptional()
-  @IsNotEmptyObject()
-  @ValidateNested({ each: true })
-  @Type(() => Options)
-  @ApiProperty({ type: () => Options, required: false })
-  options?: Options;
+  @IsNotEmpty()
+  @IsBoolean()
+  @ApiProperty({ required: false })
+  isRelaxMode?: boolean;
 }

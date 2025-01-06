@@ -7,6 +7,7 @@ import { AxiosError, AxiosRequestConfig } from 'axios';
 import { UserFranceConnect } from '@/lib/types/user_france_connect.type';
 import { catchError, firstValueFrom } from 'rxjs';
 import { HttpService } from '@nestjs/axios';
+import { Logger } from '@/lib/utils/logger.utils';
 
 @Injectable()
 export class FranceConnectStrategy extends PassportStrategy(
@@ -50,7 +51,11 @@ export class FranceConnectStrategy extends PassportStrategy(
     const { data } = await firstValueFrom(
       this.httpService.get<UserFranceConnect>(url, options).pipe(
         catchError((error: AxiosError) => {
-          console.error(error);
+          Logger.error(
+            `Une erreur est survenue lors de l'authentitification FranceConnect`,
+            error,
+            FranceConnectStrategy.name,
+          );
           throw new HttpException(
             'Impossible de récupérer le profile',
             HttpStatus.FAILED_DEPENDENCY,

@@ -23,8 +23,8 @@ import { CustomRequest } from '@/lib/types/request.type';
 import { AdminGuard } from '@/lib/class/guards/admin.guard';
 import { UpdateChefDeFileDTO } from './dto/update_chef_de_file.dto';
 import { ChefDeFileService } from './chef_de_file.service';
-import { ChefDeFile } from './chef_de_file.schema';
 import { CreateChefDeFileDTO } from './dto/create_chef_de_file.dto';
+import { ChefDeFile } from './chef_de_file.entity';
 
 @ApiTags('chefs_de_file')
 @Controller('chefs-de-file')
@@ -83,7 +83,7 @@ export class ChefDeFileController {
     @Res() res: Response,
   ) {
     const chefDeFile: ChefDeFile = await this.chefDeFileService.updateOne(
-      req.chefDeFile._id.toString(),
+      req.chefDeFile.id,
       body,
     );
     res.status(HttpStatus.OK).json(chefDeFile);

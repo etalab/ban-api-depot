@@ -1,53 +1,86 @@
+import {
+  PostgreSqlContainer,
+  StartedPostgreSqlContainer,
+} from '@testcontainers/postgresql';
+import { Client } from 'pg';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import { MongooseModule, getModelToken } from '@nestjs/mongoose';
-import { Connection, connect, Model } from 'mongoose';
-import { ObjectId } from 'mongodb';
 import * as request from 'supertest';
+import { Repository } from 'typeorm';
+import { ObjectId } from 'bson';
 
 import { ChefDeFileModule } from './chef_de_file.module';
-import { ChefDeFile, TypePerimeterEnum } from './chef_de_file.schema';
+import { ChefDeFile } from './chef_de_file.entity';
+import { Perimeter, TypePerimeterEnum } from './perimeters.entity';
 import { UpdateChefDeFileDTO } from './dto/update_chef_de_file.dto';
+import { getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
+import { Client as Client2 } from '../client/client.entity';
+import { Habilitation } from '../habilitation/habilitation.entity';
+import { Revision } from '../revision/revision.entity';
+import { File } from '../file/file.entity';
+import { Mandataire } from '../mandataire/mandataire.entity';
 
 process.env.FC_FS_ID = 'coucou';
 process.env.ADMIN_TOKEN = 'xxxx';
 
 describe('CHEF_DE_FILE MODULE', () => {
   let app: INestApplication;
-  let mongod: MongoMemoryServer;
-  let mongoConnection: Connection;
-  let chefDeFileModel: Model<ChefDeFile>;
+  let postgresContainer: StartedPostgreSqlContainer;
+  let postgresClient: Client;
+  let chefDeFileRepository: Repository<ChefDeFile>;
 
   beforeAll(async () => {
     // INIT DB
-    mongod = await MongoMemoryServer.create();
-    const uri = mongod.getUri();
-    mongoConnection = (await connect(uri)).connection;
+    postgresContainer = await new PostgreSqlContainer().start();
+    postgresClient = new Client({
+      host: postgresContainer.getHost(),
+      port: postgresContainer.getPort(),
+      database: postgresContainer.getDatabase(),
+      user: postgresContainer.getUsername(),
+      password: postgresContainer.getPassword(),
+    });
+    await postgresClient.connect();
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [MongooseModule.forRoot(uri), ChefDeFileModule],
+      imports: [
+        TypeOrmModule.forRoot({
+          type: 'postgres',
+          host: postgresContainer.getHost(),
+          port: postgresContainer.getPort(),
+          username: postgresContainer.getUsername(),
+          password: postgresContainer.getPassword(),
+          database: postgresContainer.getDatabase(),
+          synchronize: true,
+          entities: [
+            Client2,
+            ChefDeFile,
+            Perimeter,
+            Habilitation,
+            Revision,
+            File,
+            Mandataire,
+          ],
+        }),
+        ChefDeFileModule,
+      ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
     app.useGlobalPipes(new ValidationPipe());
     await app.init();
 
-    // INIT MODEL
-    chefDeFileModel = app.get<Model<ChefDeFile>>(
-      getModelToken(ChefDeFile.name),
-    );
+    // INIT REPOSITORY
+    chefDeFileRepository = app.get(getRepositoryToken(ChefDeFile));
   });
 
   afterAll(async () => {
-    await mongoConnection.dropDatabase();
-    await mongoConnection.close();
-    await mongod.stop();
+    await postgresClient.end();
+    await postgresContainer.stop();
     await app.close();
   });
 
   afterEach(async () => {
-    await chefDeFileModel.deleteMany({});
+    await chefDeFileRepository.delete({});
   });
 
   it('GET /chefs-de-file empty', async () => {
@@ -62,7 +95,7 @@ describe('CHEF_DE_FILE MODULE', () => {
       nom: 'test',
       email: 'test@test.fr',
       isEmailPublic: true,
-      perimetre: [],
+      perimeters: [],
     };
     await request(app.getHttpServer())
       .post(`/chefs-de-file`)
@@ -75,7 +108,7 @@ describe('CHEF_DE_FILE MODULE', () => {
       nom: 'test',
       email: 'test@test.fr',
       isEmailPublic: true,
-      perimetre: [
+      perimeters: [
         {
           type: TypePerimeterEnum.COMMUNE,
           code: '00000',
@@ -101,11 +134,11 @@ describe('CHEF_DE_FILE MODULE', () => {
       .set('authorization', `Bearer ${process.env.ADMIN_TOKEN}`)
       .expect(200);
 
-    const resExpected = {
+    const resExpected: Partial<ChefDeFile> = {
       nom: 'test',
       email: 'test@test.fr',
       isEmailPublic: false,
-      perimetre: [],
+      perimeters: [],
     };
     expect(response.body).toMatchObject(resExpected);
   });
@@ -115,7 +148,7 @@ describe('CHEF_DE_FILE MODULE', () => {
       nom: 'test',
       email: 'test@test.fr',
       isEmailPublic: true,
-      perimetre: [],
+      perimeters: [],
     };
     const response = await request(app.getHttpServer())
       .post(`/chefs-de-file`)
@@ -124,7 +157,7 @@ describe('CHEF_DE_FILE MODULE', () => {
       .expect(200);
 
     const response2 = await request(app.getHttpServer())
-      .get(`/chefs-de-file/${response.body._id}`)
+      .get(`/chefs-de-file/${response.body.id}`)
       .expect(200);
 
     expect(response2.body).toMatchObject(chef_de_file);
@@ -145,7 +178,7 @@ describe('CHEF_DE_FILE MODULE', () => {
       nom: 'test',
       email: 'test@test.fr',
       isEmailPublic: true,
-      perimetre: [],
+      perimeters: [],
     };
     await request(app.getHttpServer())
       .post(`/chefs-de-file`)
@@ -165,7 +198,7 @@ describe('CHEF_DE_FILE MODULE', () => {
       nom: 'test',
       email: 'test@test.fr',
       isEmailPublic: true,
-      perimetre: [],
+      perimeters: [],
     };
     await request(app.getHttpServer())
       .post(`/chefs-de-file`)
@@ -197,7 +230,7 @@ describe('CHEF_DE_FILE MODULE', () => {
       nom: 'test',
       email: 'test@test.fr',
       isEmailPublic: true,
-      perimetre: [],
+      perimeters: [],
     };
     const response = await request(app.getHttpServer())
       .post(`/chefs-de-file`)
@@ -209,7 +242,7 @@ describe('CHEF_DE_FILE MODULE', () => {
       nom: 'nom',
       email: 'nom@test.fr',
       isEmailPublic: false,
-      perimetre: [
+      perimeters: [
         {
           type: TypePerimeterEnum.COMMUNE,
           code: '00000',
@@ -218,7 +251,7 @@ describe('CHEF_DE_FILE MODULE', () => {
     };
 
     const response3 = await request(app.getHttpServer())
-      .put(`/chefs-de-file/${response.body._id}`)
+      .put(`/chefs-de-file/${response.body.id}`)
       .set('authorization', `Bearer ${process.env.ADMIN_TOKEN}`)
       .send(change)
       .expect(200);
@@ -226,7 +259,7 @@ describe('CHEF_DE_FILE MODULE', () => {
     expect(response3.body).toMatchObject(change);
 
     const response4 = await request(app.getHttpServer())
-      .get(`/chefs-de-file/${response.body._id}`)
+      .get(`/chefs-de-file/${response.body.id}`)
       .expect(200);
 
     expect(response4.body).toMatchObject(change);
@@ -237,7 +270,7 @@ describe('CHEF_DE_FILE MODULE', () => {
       nom: 'test',
       email: 'test@test.fr',
       isEmailPublic: true,
-      perimetre: [],
+      perimeters: [],
     };
     const response = await request(app.getHttpServer())
       .post(`/chefs-de-file`)
@@ -249,7 +282,7 @@ describe('CHEF_DE_FILE MODULE', () => {
       nom: 'nom',
       email: 'nom@test.fr',
       isEmailPublic: false,
-      perimetre: [
+      perimeters: [
         {
           type: TypePerimeterEnum.COMMUNE,
           code: '00000',
@@ -258,12 +291,12 @@ describe('CHEF_DE_FILE MODULE', () => {
     };
 
     await request(app.getHttpServer())
-      .put(`/chefs-de-file/${response.body._id}`)
+      .put(`/chefs-de-file/${response.body.id}`)
       .send(change)
       .expect(403);
 
     const response4 = await request(app.getHttpServer())
-      .get(`/chefs-de-file/${response.body._id}`)
+      .get(`/chefs-de-file/${response.body.id}`)
       .expect(200);
 
     expect(response4.body).toMatchObject(chef_de_file);
@@ -274,7 +307,7 @@ describe('CHEF_DE_FILE MODULE', () => {
       nom: 'nom',
       email: 'nom@test.fr',
       isEmailPublic: false,
-      perimetre: [
+      perimeters: [
         {
           type: TypePerimeterEnum.COMMUNE,
           code: '00000',
@@ -294,7 +327,7 @@ describe('CHEF_DE_FILE MODULE', () => {
       nom: 'nom',
       email: 'nom@test.fr',
       isEmailPublic: false,
-      perimetre: [
+      perimeters: [
         {
           type: TypePerimeterEnum.COMMUNE,
           code: '00000',

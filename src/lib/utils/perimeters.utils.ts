@@ -1,13 +1,13 @@
 import {
   Perimeter,
   TypePerimeterEnum,
-} from '@/modules/chef_de_file/chef_de_file.schema';
+} from '@/modules/chef_de_file/perimeters.entity';
 import {
   getCommunesByDepartement,
   getCommune,
   getEPCI,
   isArrondissement,
-} from './cog';
+} from './cog.utils';
 import { CommuneCOG, EpciCOG } from '@/lib/types/cog.type';
 
 function isInDepartement(departement: string, codeCommune: string): boolean {
