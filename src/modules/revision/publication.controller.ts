@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   HttpStatus,
+  Logger,
   Post,
   Put,
   Req,
@@ -23,8 +24,8 @@ import { Response } from 'express';
 import { CustomRequest } from '@/lib/types/request.type';
 import { ClientGuard } from '@/lib/class/guards/client.guard';
 import { RevisionGuard } from '@/lib/class/guards/revision.guard';
-import { File } from '@/modules/file/file.schema';
-import { Revision } from './revision.schema';
+import { File } from '@/modules/file/file.entity';
+import { Revision } from './revision.entity';
 import { RevisionService } from './revision.service';
 import { RevisionWithClientDTO } from './dto/revision_with_client.dto';
 import { CreateRevisionDTO } from './dto/create_revision.dto';
@@ -36,7 +37,10 @@ import { PublishDTO } from './dto/publish.dto';
 @ApiTags('publications')
 @Controller('')
 export class PublicationController {
-  constructor(private revisionService: RevisionService) {}
+  constructor(
+    private revisionService: RevisionService,
+    private readonly logger: Logger,
+  ) {}
 
   @Post('communes/:codeCommune/revisions')
   @ApiOperation({
@@ -106,15 +110,15 @@ export class PublicationController {
     @Res() res: Response,
   ) {
     const now = Date.now();
-    console.log(
-      `START UPLOAD FILE ROUTE for ${req.revision._id}, size ${Buffer.byteLength(fileBuffer)} at ${new Date(now).toDateString()}`,
+    this.logger.debug(
+      `START UPLOAD FILE ROUTE for ${req.revision.id}, size ${Buffer.byteLength(fileBuffer)} at ${new Date(now).toDateString()}`,
     );
     const file: File = await this.revisionService.setFile(
       req.revision,
       fileBuffer,
     );
-    console.log(
-      `END UPLOAD FILE ROUTE for ${req.revision._id} in ${Date.now() - now}`,
+    this.logger.debug(
+      `END UPLOAD FILE ROUTE for ${req.revision.id} in ${Date.now() - now}`,
     );
     res.status(HttpStatus.OK).json(file);
   }
@@ -177,7 +181,7 @@ export class PublicationController {
     @Body() body: PublishDTO,
     @Res() res: Response,
   ) {
-    const revision: Revision = await this.revisionService.publishOne(
+    const revision: Revision = await this.revisionService.publishOneWithLock(
       req.revision,
       req.client,
       body.habilitationId,

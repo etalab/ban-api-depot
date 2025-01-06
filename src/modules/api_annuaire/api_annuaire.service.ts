@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { deburr } from 'lodash';
 import { HttpService } from '@nestjs/axios';
 import { AxiosError, AxiosRequestConfig } from 'axios';
@@ -6,7 +6,10 @@ import { catchError, firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class ApiAnnuaireService {
-  constructor(private readonly httpService: HttpService) {}
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly logger: Logger,
+  ) {}
 
   private normalize(str: string) {
     return deburr(str).toLowerCase();
@@ -47,8 +50,9 @@ export class ApiAnnuaireService {
 
       throw new Error(`L’adresse email " ${email} " ne peut pas être utilisée`);
     } catch (error) {
-      console.error(
+      this.logger.error(
         `Une erreur s’est produite lors de la récupération de l’adresse email de la mairie (Code commune: ${codeCommune}).`,
+        ApiAnnuaireService.name,
         error,
       );
     }

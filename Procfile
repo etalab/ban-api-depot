@@ -1,0 +1,1 @@
+postdeploy: yarn typeorm:migration:run

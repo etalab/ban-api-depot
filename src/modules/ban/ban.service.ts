@@ -1,11 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { AxiosError } from 'axios';
 import { catchError, firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class BanService {
-  constructor(private readonly httpService: HttpService) {}
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly logger: Logger,
+  ) {}
 
   public async composeCommune(codeCommune: string) {
     try {
@@ -18,8 +21,13 @@ export class BanService {
         ),
       );
     } catch (error) {
-      console.error(
-        `ERROR BAN COMPOSE : ${error.response?.status} : ${error.response?.statusText}`,
+      this.logger.error(
+        `Une erreur est survenue lors de l'appel compose a la BAN`,
+        BanService.name,
+        {
+          status: error.response?.status,
+          text: error.response?.statusText,
+        },
       );
     }
   }

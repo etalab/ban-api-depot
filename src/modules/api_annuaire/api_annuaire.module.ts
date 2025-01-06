@@ -1,5 +1,5 @@
 import { HttpModule } from '@nestjs/axios';
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 import { ApiAnnuaireService } from './api_annuaire.service';
@@ -15,7 +15,7 @@ import { ApiAnnuaireService } from './api_annuaire.service';
       inject: [ConfigService],
     }),
   ],
-  providers: [ApiAnnuaireService],
+  providers: [ApiAnnuaireService, Logger],
   controllers: [],
   exports: [ApiAnnuaireService],
 })

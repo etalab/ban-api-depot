@@ -1,3 +1,8 @@
+import {
+  PostgreSqlContainer,
+  StartedPostgreSqlContainer,
+} from '@testcontainers/postgresql';
+import { Client } from 'pg';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   Global,
@@ -5,19 +10,22 @@ import {
   Module,
   ValidationPipe,
 } from '@nestjs/common';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import { MongooseModule, getModelToken } from '@nestjs/mongoose';
-import { Connection, connect, Model } from 'mongoose';
-import { ObjectId } from 'mongodb';
 import * as request from 'supertest';
 import { MailerService } from '@nestjs-modules/mailer';
 
-import { Client } from './client.schema';
+import { Client as Client2 } from './client.entity';
 import { ClientModule } from './client.module';
 import { UpdateClientDTO } from './dto/update_client.dto';
-import { Mandataire } from '../mandataire/mandataire.schema';
-import { ChefDeFile } from '../chef_de_file/chef_de_file.schema';
+import { Mandataire } from '../mandataire/mandataire.entity';
+import { ChefDeFile } from '../chef_de_file/chef_de_file.entity';
 import { TOKEN_LENGTH } from '@/lib/utils/token.utils';
+import { Perimeter } from '../chef_de_file/perimeters.entity';
+import { Habilitation } from '../habilitation/habilitation.entity';
+import { Revision } from '../revision/revision.entity';
+import { File } from '../file/file.entity';
+import { getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ObjectId } from 'bson';
 
 process.env.FC_FS_ID = 'coucou';
 process.env.ADMIN_TOKEN = 'xxxx';
@@ -38,20 +46,47 @@ class MailerModule {}
 
 describe('CLIENT MODULE', () => {
   let app: INestApplication;
-  let mongod: MongoMemoryServer;
-  let mongoConnection: Connection;
-  let clientModel: Model<Client>;
-  let mandataireModel: Model<Mandataire>;
-  let chefDefileModel: Model<ChefDeFile>;
+  let postgresContainer: StartedPostgreSqlContainer;
+  let postgresClient: Client;
+  let clientRepository: Repository<Client2>;
+  let mandataireRepository: Repository<Mandataire>;
+  let chefDeFileRepository: Repository<ChefDeFile>;
 
   beforeAll(async () => {
     // INIT DB
-    mongod = await MongoMemoryServer.create();
-    const uri = mongod.getUri();
-    mongoConnection = (await connect(uri)).connection;
+    postgresContainer = await new PostgreSqlContainer().start();
+    postgresClient = new Client({
+      host: postgresContainer.getHost(),
+      port: postgresContainer.getPort(),
+      database: postgresContainer.getDatabase(),
+      user: postgresContainer.getUsername(),
+      password: postgresContainer.getPassword(),
+    });
+    await postgresClient.connect();
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [MongooseModule.forRoot(uri), ClientModule, MailerModule],
+      imports: [
+        TypeOrmModule.forRoot({
+          type: 'postgres',
+          host: postgresContainer.getHost(),
+          port: postgresContainer.getPort(),
+          username: postgresContainer.getUsername(),
+          password: postgresContainer.getPassword(),
+          database: postgresContainer.getDatabase(),
+          synchronize: true,
+          entities: [
+            Client2,
+            ChefDeFile,
+            Perimeter,
+            Habilitation,
+            Revision,
+            File,
+            Mandataire,
+          ],
+        }),
+        ClientModule,
+        MailerModule,
+      ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
@@ -59,41 +94,38 @@ describe('CLIENT MODULE', () => {
     await app.init();
 
     // INIT MODEL
-    clientModel = app.get<Model<Client>>(getModelToken(Client.name));
-    mandataireModel = app.get<Model<Mandataire>>(
-      getModelToken(Mandataire.name),
-    );
-    chefDefileModel = app.get<Model<ChefDeFile>>(
-      getModelToken(ChefDeFile.name),
-    );
+    clientRepository = app.get(getRepositoryToken(Client2));
+    mandataireRepository = app.get(getRepositoryToken(Mandataire));
+    chefDeFileRepository = app.get(getRepositoryToken(ChefDeFile));
   });
 
   afterAll(async () => {
-    await mongoConnection.dropDatabase();
-    await mongoConnection.close();
-    await mongod.stop();
+    await postgresClient.end();
+    await postgresContainer.stop();
     await app.close();
   });
 
   afterEach(async () => {
-    await clientModel.deleteMany({});
-    await mandataireModel.deleteMany({});
-    await chefDefileModel.deleteMany({});
+    await clientRepository.delete({});
+    await mandataireRepository.delete({});
+    await chefDeFileRepository.delete({});
   });
 
   async function getClient(props: UpdateClientDTO): Promise<UpdateClientDTO> {
-    const mandataire = await mandataireModel.create({
+    const mandataireToSave = mandataireRepository.create({
       nom: 'mandataire',
       email: 'mandataire@test.com',
     });
-    const chefDeFile = await chefDefileModel.create({
+    const mandataire = await mandataireRepository.save(mandataireToSave);
+    const chefDeFileToSave = chefDeFileRepository.create({
       nom: 'chefDeFile',
       email: 'chefDeFile@test.com',
     });
+    const chefDeFile = await chefDeFileRepository.save(chefDeFileToSave);
     return {
       ...props,
-      mandataire: mandataire._id.toHexString(),
-      chefDeFile: chefDeFile._id.toHexString(),
+      mandataireId: mandataire.id,
+      chefDeFileId: chefDeFile.id,
     };
   }
 
@@ -130,10 +162,8 @@ describe('CLIENT MODULE', () => {
   it('POST /clients', async () => {
     const client = await getClient({
       nom: 'client_test',
-      active: false,
-      options: {
-        relaxMode: true,
-      },
+      isActive: false,
+      isRelaxMode: true,
     });
     const response = await request(app.getHttpServer())
       .post(`/clients`)
@@ -148,7 +178,7 @@ describe('CLIENT MODULE', () => {
   it('POST /clients', async () => {
     const client = await getClient({
       nom: 'client_test',
-      active: false,
+      isActive: false,
     });
     const response = await request(app.getHttpServer())
       .post(`/clients`)
@@ -159,20 +189,16 @@ describe('CLIENT MODULE', () => {
     expect(response.body.token).toHaveLength(TOKEN_LENGTH);
     expect(response.body).toMatchObject({
       nom: 'client_test',
-      active: false,
-      options: {
-        relaxMode: false,
-      },
+      isActive: false,
+      isRelaxMode: true,
     });
   });
 
   it('GET /clients/:id', async () => {
     const client = await getClient({
       nom: 'client_test',
-      active: false,
-      options: {
-        relaxMode: true,
-      },
+      isActive: false,
+      isRelaxMode: true,
     });
     const { body }: { body: Client } = await request(app.getHttpServer())
       .post(`/clients`)
@@ -183,7 +209,7 @@ describe('CLIENT MODULE', () => {
     const { body: clientResponse }: { body: Client } = await request(
       app.getHttpServer(),
     )
-      .get(`/clients/${body._id}`)
+      .get(`/clients/${body.id}`)
       .expect(200);
 
     expect(clientResponse).toMatchObject(client);
@@ -202,10 +228,8 @@ describe('CLIENT MODULE', () => {
   it('GET /clients', async () => {
     const client = await getClient({
       nom: 'client_test',
-      active: false,
-      options: {
-        relaxMode: true,
-      },
+      isActive: false,
+      isRelaxMode: true,
     });
     await request(app.getHttpServer())
       .post(`/clients`)
@@ -225,10 +249,8 @@ describe('CLIENT MODULE', () => {
   it('GET /clients', async () => {
     const client = await getClient({
       nom: 'client_test',
-      active: false,
-      options: {
-        relaxMode: true,
-      },
+      isActive: false,
+      isRelaxMode: true,
     });
     await request(app.getHttpServer())
       .post(`/clients`)
@@ -258,10 +280,8 @@ describe('CLIENT MODULE', () => {
   it('PUT /clients', async () => {
     const client = await getClient({
       nom: 'client_test',
-      active: false,
-      options: {
-        relaxMode: true,
-      },
+      isActive: false,
+      isRelaxMode: true,
     });
     const response = await request(app.getHttpServer())
       .post(`/clients`)
@@ -271,14 +291,12 @@ describe('CLIENT MODULE', () => {
 
     const change: UpdateClientDTO = {
       nom: 'put_test',
-      active: true,
-      options: {
-        relaxMode: false,
-      },
+      isActive: true,
+      isRelaxMode: true,
     };
 
     const response3 = await request(app.getHttpServer())
-      .put(`/clients/${response.body._id}`)
+      .put(`/clients/${response.body.id}`)
       .set('authorization', `Bearer ${process.env.ADMIN_TOKEN}`)
       .send(change)
       .expect(200);
@@ -286,7 +304,7 @@ describe('CLIENT MODULE', () => {
     expect(response3.body).toMatchObject(change);
 
     const response4 = await request(app.getHttpServer())
-      .get(`/clients/${response.body._id}`)
+      .get(`/clients/${response.body.id}`)
       .expect(200);
 
     expect(response4.body).toMatchObject(change);
@@ -295,10 +313,8 @@ describe('CLIENT MODULE', () => {
   it('PUT 403 /clients', async () => {
     const client = await getClient({
       nom: 'client_test',
-      active: false,
-      options: {
-        relaxMode: true,
-      },
+      isActive: false,
+      isRelaxMode: true,
     });
     const response = await request(app.getHttpServer())
       .post(`/clients`)
@@ -308,19 +324,17 @@ describe('CLIENT MODULE', () => {
 
     const change: UpdateClientDTO = {
       nom: 'put_test',
-      active: true,
-      options: {
-        relaxMode: false,
-      },
+      isActive: true,
+      isRelaxMode: true,
     };
 
     await request(app.getHttpServer())
-      .put(`/clients/${response.body._id}`)
+      .put(`/clients/${response.body.id}`)
       .send(change)
       .expect(403);
 
     const response4 = await request(app.getHttpServer())
-      .get(`/clients/${response.body._id}`)
+      .get(`/clients/${response.body.id}`)
       .expect(200);
 
     expect(response4.body).toMatchObject(client);
@@ -329,10 +343,8 @@ describe('CLIENT MODULE', () => {
   it('PUT /clients/:id 400', async () => {
     const change = getClient({
       nom: 'client_test',
-      active: false,
-      options: {
-        relaxMode: true,
-      },
+      isActive: false,
+      isRelaxMode: true,
     });
 
     await request(app.getHttpServer())
@@ -345,10 +357,8 @@ describe('CLIENT MODULE', () => {
   it('PUT /clients/:id 404', async () => {
     const change = getClient({
       nom: 'client_test',
-      active: false,
-      options: {
-        relaxMode: true,
-      },
+      isActive: false,
+      isRelaxMode: true,
     });
 
     await request(app.getHttpServer())

@@ -1,32 +1,68 @@
+import {
+  PostgreSqlContainer,
+  StartedPostgreSqlContainer,
+} from '@testcontainers/postgresql';
+import { Client } from 'pg';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import { MongooseModule, getModelToken } from '@nestjs/mongoose';
-import { Connection, connect, Model } from 'mongoose';
-import { ObjectId } from 'mongodb';
 import * as request from 'supertest';
 
-import { Mandataire } from './mandataire.schema';
+import { Mandataire } from './mandataire.entity';
 import { MandataireModule } from './mandataire.module';
 import { UpdateMandataireDTO } from './dto/update_mandataire.dto';
+import { Revision } from '../revision/revision.entity';
+import { Habilitation } from '../habilitation/habilitation.entity';
+import { Perimeter } from '../chef_de_file/perimeters.entity';
+import { ChefDeFile } from '../chef_de_file/chef_de_file.entity';
+import { getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
+import { Client as Client2 } from '../client/client.entity';
+import { Repository } from 'typeorm';
+import { ObjectId } from 'bson';
+import { File } from '../file/file.entity';
 
 process.env.FC_FS_ID = 'coucou';
 process.env.ADMIN_TOKEN = 'xxxx';
 
 describe('MANDATAIRE MODULE', () => {
   let app: INestApplication;
-  let mongod: MongoMemoryServer;
-  let mongoConnection: Connection;
-  let mandataireModel: Model<Mandataire>;
+  let postgresContainer: StartedPostgreSqlContainer;
+  let postgresClient: Client;
+  let mandataireRepository: Repository<Mandataire>;
 
   beforeAll(async () => {
     // INIT DB
-    mongod = await MongoMemoryServer.create();
-    const uri = mongod.getUri();
-    mongoConnection = (await connect(uri)).connection;
+    postgresContainer = await new PostgreSqlContainer().start();
+    postgresClient = new Client({
+      host: postgresContainer.getHost(),
+      port: postgresContainer.getPort(),
+      database: postgresContainer.getDatabase(),
+      user: postgresContainer.getUsername(),
+      password: postgresContainer.getPassword(),
+    });
+    await postgresClient.connect();
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [MongooseModule.forRoot(uri), MandataireModule],
+      imports: [
+        TypeOrmModule.forRoot({
+          type: 'postgres',
+          host: postgresContainer.getHost(),
+          port: postgresContainer.getPort(),
+          username: postgresContainer.getUsername(),
+          password: postgresContainer.getPassword(),
+          database: postgresContainer.getDatabase(),
+          synchronize: true,
+          entities: [
+            Client2,
+            ChefDeFile,
+            Perimeter,
+            Habilitation,
+            Revision,
+            File,
+            Mandataire,
+          ],
+        }),
+        MandataireModule,
+      ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
@@ -34,20 +70,17 @@ describe('MANDATAIRE MODULE', () => {
     await app.init();
 
     // INIT MODEL
-    mandataireModel = app.get<Model<Mandataire>>(
-      getModelToken(Mandataire.name),
-    );
+    mandataireRepository = app.get(getRepositoryToken(Mandataire));
   });
 
   afterAll(async () => {
-    await mongoConnection.dropDatabase();
-    await mongoConnection.close();
-    await mongod.stop();
+    await postgresClient.end();
+    await postgresContainer.stop();
     await app.close();
   });
 
   afterEach(async () => {
-    await mandataireModel.deleteMany({});
+    await mandataireRepository.delete({});
   });
 
   it('GET /mandataires empty', async () => {
@@ -93,7 +126,7 @@ describe('MANDATAIRE MODULE', () => {
       .expect(200);
 
     const response2 = await request(app.getHttpServer())
-      .get(`/mandataires/${response.body._id}`)
+      .get(`/mandataires/${response.body.id}`)
       .expect(200);
 
     expect(response2.body).toMatchObject(mandataire);
@@ -174,7 +207,7 @@ describe('MANDATAIRE MODULE', () => {
     };
 
     const response3 = await request(app.getHttpServer())
-      .put(`/mandataires/${response.body._id}`)
+      .put(`/mandataires/${response.body.id}`)
       .set('authorization', `Bearer ${process.env.ADMIN_TOKEN}`)
       .send(change)
       .expect(200);
@@ -182,7 +215,7 @@ describe('MANDATAIRE MODULE', () => {
     expect(response3.body).toMatchObject(change);
 
     const response4 = await request(app.getHttpServer())
-      .get(`/mandataires/${response.body._id}`)
+      .get(`/mandataires/${response.body.id}`)
       .expect(200);
 
     expect(response4.body).toMatchObject(change);
@@ -205,12 +238,12 @@ describe('MANDATAIRE MODULE', () => {
     };
 
     await request(app.getHttpServer())
-      .put(`/mandataires/${response.body._id}`)
+      .put(`/mandataires/${response.body.id}`)
       .send(change)
       .expect(403);
 
     const response4 = await request(app.getHttpServer())
-      .get(`/mandataires/${response.body._id}`)
+      .get(`/mandataires/${response.body.id}`)
       .expect(200);
 
     expect(response4.body).toMatchObject(mandataire);

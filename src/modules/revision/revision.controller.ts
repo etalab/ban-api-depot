@@ -19,7 +19,7 @@ import { Response } from 'express';
 import { CustomRequest } from '@/lib/types/request.type';
 import { ParseDatePipe } from '@/lib/class/pipes/date.pipe';
 import { FileService } from '@/modules/file/file.service';
-import { Revision, StatusRevisionEnum } from './revision.schema';
+import { Revision, StatusRevisionEnum } from './revision.entity';
 import { RevisionService } from './revision.service';
 import { RevisionWithClientDTO } from './dto/revision_with_client.dto';
 
@@ -130,9 +130,7 @@ export class RevisionController {
     const revision: Revision = await this.revisionService.findCurrent(
       req.params.codeCommune,
     );
-    const data: Buffer = await this.fileService.findDataByRevision(
-      revision._id,
-    );
+    const data: Buffer = await this.fileService.findDataByRevision(revision.id);
 
     res.attachment(`bal-${revision.codeCommune}.csv`);
     res.setHeader('Content-Type', 'text/csv');
@@ -166,7 +164,7 @@ export class RevisionController {
       );
     }
     const data: Buffer = await this.fileService.findDataByRevision(
-      req.revision._id,
+      req.revision.id,
     );
 
     res.attachment(`bal-${req.revision.codeCommune}.csv`);

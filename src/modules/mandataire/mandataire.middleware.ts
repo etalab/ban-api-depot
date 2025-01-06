@@ -7,9 +7,9 @@ import {
 import { Response, NextFunction } from 'express';
 
 import { CustomRequest } from '@/lib/types/request.type';
-import { Mandataire } from './mandataire.schema';
 import { MandataireService } from './mandataire.service';
-import { isObjectIdOrHexString } from 'mongoose';
+import { ObjectId } from 'bson';
+import { Mandataire } from './mandataire.entity';
 
 @Injectable()
 export class MandataireMiddleware implements NestMiddleware {
@@ -18,7 +18,7 @@ export class MandataireMiddleware implements NestMiddleware {
   async use(req: CustomRequest, res: Response, next: NextFunction) {
     const { mandataireId } = req.params;
     if (mandataireId) {
-      if (!isObjectIdOrHexString(mandataireId)) {
+      if (!ObjectId.isValid(mandataireId)) {
         throw new HttpException(
           `Mandataire Id ${mandataireId} is not ObjectId`,
           HttpStatus.BAD_REQUEST,

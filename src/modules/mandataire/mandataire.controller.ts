@@ -21,10 +21,10 @@ import { Response } from 'express';
 
 import { CustomRequest } from '@/lib/types/request.type';
 import { AdminGuard } from '@/lib/class/guards/admin.guard';
-import { Mandataire } from './mandataire.schema';
 import { UpdateMandataireDTO } from './dto/update_mandataire.dto';
 import { MandataireService } from './mandataire.service';
 import { CreateMandataireDTO } from './dto/create_mandataire.dto';
+import { Mandataire } from './mandataire.entity';
 
 @ApiTags('mandataires')
 @Controller('mandataires')
@@ -83,7 +83,7 @@ export class MandataireController {
     @Res() res: Response,
   ) {
     const mandataire: Mandataire = await this.mandataireService.updateOne(
-      req.mandataire._id.toString(),
+      req.mandataire.id,
       body,
     );
     res.status(HttpStatus.OK).json(mandataire);

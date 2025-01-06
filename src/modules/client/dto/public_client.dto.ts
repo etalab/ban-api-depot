@@ -1,12 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Types } from 'mongoose';
 
 export class PublicClient {
   @ApiProperty({ type: String, required: false })
-  _id: Types.ObjectId;
+  id: string;
 
   @ApiProperty({ type: String, required: false })
-  id?: string;
+  legacyId?: string;
 
   @ApiProperty({ type: String, required: false })
   nom: string;

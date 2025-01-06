@@ -1,11 +1,11 @@
 import { Request } from 'express';
 
-import { ChefDeFile } from '@/modules/chef_de_file/chef_de_file.schema';
-import { Client } from '@/modules/client/client.schema';
-import { Habilitation } from '@/modules/habilitation/habilitation.schema';
-import { Mandataire } from '@/modules/mandataire/mandataire.schema';
-import { Revision } from '@/modules/revision/revision.schema';
+import { Habilitation } from '@/modules/habilitation/habilitation.entity';
+import { Revision } from '@/modules/revision/revision.entity';
 import { UserFranceConnect } from './user_france_connect.type';
+import { ChefDeFile } from '@/modules/chef_de_file/chef_de_file.entity';
+import { Mandataire } from '@/modules/mandataire/mandataire.entity';
+import { Client } from '@/modules/client/client.entity';
 
 export interface CustomRequest extends Request {
   token?: string;

@@ -8,9 +8,9 @@ https://adresse-data-gouv-fr.gitbook.io/bal/api-depot
 
 ## Pré-requis
 
-- [Node.js](https://nodejs.org) 16+
-- [MongoDB](https://www.mongodb.com) 4+
+- [Node.js](https://nodejs.org) 22
 - [yarn](https://www.yarnpkg.com)
+- [PostgresSQL](https://www.postgresql.org/)
 
 ## Utilisation
 
@@ -75,8 +75,7 @@ Elles peuvent être définies classiquement ou en créant un fichier `.env` sur 
 
 | Nom de la variable | Description                                                                                        |
 | ------------------ | -------------------------------------------------------------------------------------------------- |
-| `MONGODB_URL`      | Paramètre de connexion à MongoDB                                                                   |
-| `MONGODB_DBNAME`   | Nom de la base de données à utiliser                                                               |
+| `POSTGRES_URL`     | Paramètre de connexion à PostgresSql                                                               |
 | ---                | ---                                                                                                |
 | `PORT`             | Port à utiliser pour l'API                                                                         |
 | `ADMIN_TOKEN`      | Token pour accéder au route protégé par Admin()                                                    |

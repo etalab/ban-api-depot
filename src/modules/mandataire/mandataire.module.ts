@@ -1,19 +1,14 @@
 import { MiddlewareConsumer, Module } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
 
 import { MandataireService } from './mandataire.service';
 import { MandataireController } from './mandataire.controller';
 import { MandataireMiddleware } from './mandataire.middleware';
-import { Mandataire, MandataireSchema } from './mandataire.schema';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { Mandataire } from './mandataire.entity';
 
 @Module({
-  imports: [
-    ConfigModule,
-    MongooseModule.forFeature([
-      { name: Mandataire.name, schema: MandataireSchema },
-    ]),
-  ],
+  imports: [ConfigModule, TypeOrmModule.forFeature([Mandataire])],
   providers: [MandataireService],
   controllers: [MandataireController],
   exports: [MandataireService],

@@ -7,7 +7,7 @@ import {
 import { Response, NextFunction } from 'express';
 
 import { CustomRequest } from '@/lib/types/request.type';
-import { isCommune } from '@/lib/utils/cog';
+import { isCommune } from '@/lib/utils/cog.utils';
 
 @Injectable()
 export class CommuneMiddleware implements NestMiddleware {

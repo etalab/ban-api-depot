@@ -1,5 +1,9 @@
-import { MiddlewareConsumer, Module, RequestMethod } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
+import {
+  Logger,
+  MiddlewareConsumer,
+  Module,
+  RequestMethod,
+} from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 import { CommuneMiddleware } from '@/lib/class/middlewares/commune.middleware';
@@ -11,19 +15,18 @@ import { HabilitationModule } from '@/modules/habilitation/habilitation.module';
 import { MandataireModule } from '@/modules/mandataire/mandataire.module';
 import { RevisionMiddleware } from './revision.middleware';
 import { ValidationService } from './validation.service';
-import { Revision, RevisionSchema } from './revision.schema';
 import { RevisionService } from './revision.service';
 import { RevisionController } from './revision.controller';
 import { NotifyService } from './notify.service';
 import { PublicationController } from './publication.controller';
 import { SlackModule } from 'nestjs-slack';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { Revision } from './revision.entity';
 
 @Module({
   imports: [
     ConfigModule,
-    MongooseModule.forFeature([
-      { name: Revision.name, schema: RevisionSchema },
-    ]),
+    TypeOrmModule.forFeature([Revision]),
     ClientModule,
     FileModule,
     ChefDeFileModule,
@@ -36,10 +39,13 @@ import { SlackModule } from 'nestjs-slack';
       useFactory: (config: ConfigService) => ({
         type: 'api',
         token: config.get('SLACK_TOKEN'),
+        clientOptions: {
+          retryConfig: { retries: 0 },
+        },
       }),
     }),
   ],
-  providers: [RevisionService, ValidationService, NotifyService],
+  providers: [RevisionService, ValidationService, NotifyService, Logger],
   controllers: [RevisionController, PublicationController],
   exports: [RevisionService],
 })

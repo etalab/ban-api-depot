@@ -1,3 +1,8 @@
+import {
+  PostgreSqlContainer,
+  StartedPostgreSqlContainer,
+} from '@testcontainers/postgresql';
+import { Client } from 'pg';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   Global,
@@ -5,10 +10,6 @@ import {
   Module,
   ValidationPipe,
 } from '@nestjs/common';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import { MongooseModule, getModelToken } from '@nestjs/mongoose';
-import { Connection, connect, Model } from 'mongoose';
-import { ObjectId } from 'mongodb';
 import * as request from 'supertest';
 import MockAdapter from 'axios-mock-adapter';
 import { add, sub } from 'date-fns';
@@ -19,12 +20,21 @@ import {
   Habilitation,
   StatusHabilitationEnum,
   TypeStrategyEnum,
-} from './habilitation.schema';
-import { AuthorizationStrategyEnum, Client } from '../client/client.schema';
-import { ChefDeFile } from '../chef_de_file/chef_de_file.schema';
-import { Mandataire } from '../mandataire/mandataire.schema';
+} from './habilitation.entity';
+import {
+  AuthorizationStrategyEnum,
+  Client as Client2,
+} from '../client/client.entity';
+import { ChefDeFile } from '../chef_de_file/chef_de_file.entity';
+import { Mandataire } from '../mandataire/mandataire.entity';
 import { HabilitationModule } from './habilitation.module';
 import { MailerService } from '@nestjs-modules/mailer';
+import { getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
+import { Revision } from '../revision/revision.entity';
+import { Perimeter } from '../chef_de_file/perimeters.entity';
+import { File } from '../file/file.entity';
+import { Repository } from 'typeorm';
+import { ObjectId } from 'bson';
 
 process.env.FC_FS_ID = 'coucou';
 process.env.ADMIN_TOKEN = 'xxxx';
@@ -45,22 +55,50 @@ class MailerModule {}
 
 describe('HABILITATION MODULE', () => {
   let app: INestApplication;
-  let mongod: MongoMemoryServer;
-  let mongoConnection: Connection;
+  let postgresContainer: StartedPostgreSqlContainer;
+  let postgresClient: Client;
+  let mandataireRepository: Repository<Mandataire>;
+  let clientRepository: Repository<Client2>;
+  let chefDeFileRepository: Repository<ChefDeFile>;
+  let habilitationRepository: Repository<Habilitation>;
+
   const axiosMock = new MockAdapter(axios);
-  let clientModel: Model<Client>;
-  let mandataireModel: Model<Mandataire>;
-  let chefDefileModel: Model<ChefDeFile>;
-  let habilitationModel: Model<Habilitation>;
 
   beforeAll(async () => {
     // INIT DB
-    mongod = await MongoMemoryServer.create();
-    const uri = mongod.getUri();
-    mongoConnection = (await connect(uri)).connection;
+    postgresContainer = await new PostgreSqlContainer().start();
+    postgresClient = new Client({
+      host: postgresContainer.getHost(),
+      port: postgresContainer.getPort(),
+      database: postgresContainer.getDatabase(),
+      user: postgresContainer.getUsername(),
+      password: postgresContainer.getPassword(),
+    });
+    await postgresClient.connect();
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [MongooseModule.forRoot(uri), HabilitationModule, MailerModule],
+      imports: [
+        TypeOrmModule.forRoot({
+          type: 'postgres',
+          host: postgresContainer.getHost(),
+          port: postgresContainer.getPort(),
+          username: postgresContainer.getUsername(),
+          password: postgresContainer.getPassword(),
+          database: postgresContainer.getDatabase(),
+          synchronize: true,
+          entities: [
+            Client2,
+            ChefDeFile,
+            Perimeter,
+            Habilitation,
+            Revision,
+            File,
+            Mandataire,
+          ],
+        }),
+        HabilitationModule,
+        MailerModule,
+      ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
@@ -68,57 +106,63 @@ describe('HABILITATION MODULE', () => {
     await app.init();
 
     // INIT MODEL
-    clientModel = app.get<Model<Client>>(getModelToken(Client.name));
-    mandataireModel = app.get<Model<Mandataire>>(
-      getModelToken(Mandataire.name),
-    );
-    chefDefileModel = app.get<Model<ChefDeFile>>(
-      getModelToken(ChefDeFile.name),
-    );
-    habilitationModel = app.get<Model<Habilitation>>(
-      getModelToken(Habilitation.name),
-    );
+    mandataireRepository = app.get(getRepositoryToken(Mandataire));
+    clientRepository = app.get(getRepositoryToken(Client2));
+    chefDeFileRepository = app.get(getRepositoryToken(ChefDeFile));
+    habilitationRepository = app.get(getRepositoryToken(Habilitation));
   });
 
   afterAll(async () => {
-    await mongoConnection.dropDatabase();
-    await mongoConnection.close();
-    await mongod.stop();
-    axiosMock.reset();
+    await postgresClient.end();
+    await postgresContainer.stop();
     await app.close();
+    axiosMock.reset();
   });
 
   afterEach(async () => {
-    await clientModel.deleteMany({});
-    await mandataireModel.deleteMany({});
-    await chefDefileModel.deleteMany({});
-    await habilitationModel.deleteMany({});
+    await mandataireRepository.delete({});
+    await clientRepository.delete({});
+    await chefDeFileRepository.delete({});
+    await habilitationRepository.delete({});
   });
 
-  async function createClient(props: Partial<Client> = {}): Promise<Client> {
-    const mandataire = await mandataireModel.create({
+  async function createClient(props: Partial<Client2> = {}): Promise<Client2> {
+    const mandataireToSave = mandataireRepository.create({
       nom: 'mandataire',
-      email: 'mandataire@test.fr',
+      email: 'mandataire@test.com',
     });
-    const chefDeFile = await chefDefileModel.create({
+    const mandataire = await mandataireRepository.save(mandataireToSave);
+    const chefDeFileToSave = chefDeFileRepository.create({
       nom: 'chefDeFile',
       email: 'chefDeFile@test.fr',
       isEmailPublic: true,
     });
-    return clientModel.create({
+    const chefDeFile = await chefDeFileRepository.save(chefDeFileToSave);
+    const clientToSave: Client2 = clientRepository.create({
       ...props,
       nom: 'test',
-      email: 'test@test.fr',
       token: 'xxxx',
       authorizationStrategy: AuthorizationStrategyEnum.CHEF_DE_FILE,
-      mandataire: mandataire._id,
-      chefDeFile: chefDeFile._id,
+      mandataireId: mandataire.id,
+      chefDeFileId: chefDeFile.id,
     });
+    return clientRepository.save(clientToSave);
+  }
+
+  async function createHabilitation(
+    props: Partial<Habilitation>,
+  ): Promise<Habilitation> {
+    const client = await createClient();
+    const entityToSave: Habilitation = habilitationRepository.create({
+      clientId: client.id,
+      ...props,
+    });
+    return habilitationRepository.save(entityToSave);
   }
 
   describe('CLIENT GUARD', () => {
     it('COMMUNE MIDLEWARE BAD', async () => {
-      const client: Client = await createClient();
+      const client: Client2 = await createClient();
       await request(app.getHttpServer())
         .post(`/communes/91400/habilitations`)
         .set('authorization', `Bearer ${client.token}`)
@@ -141,7 +185,7 @@ describe('HABILITATION MODULE', () => {
     });
 
     it('CLIENT GUARD INACTIVE', async () => {
-      const client: Client = await createClient({ active: false });
+      const client: Client2 = await createClient({ isActive: false });
       await request(app.getHttpServer())
         .post(`/communes/91534/habilitations`)
         .set('authorization', `Bearer ${client.token}`)
@@ -151,7 +195,7 @@ describe('HABILITATION MODULE', () => {
 
   describe('POST /communes/:codeCommune/habilitations', () => {
     it('CREATED NO EMAIL', async () => {
-      const client: Client = await createClient();
+      const client: Client2 = await createClient();
       const { body } = await request(app.getHttpServer())
         .post(`/communes/91534/habilitations`)
         .set('authorization', `Bearer ${client.token}`)
@@ -161,7 +205,7 @@ describe('HABILITATION MODULE', () => {
         codeCommune: '91534',
         strategy: null,
         expiresAt: null,
-        client: client._id.toHexString(),
+        clientId: client.id,
         status: StatusHabilitationEnum.PENDING,
       };
 
@@ -169,7 +213,7 @@ describe('HABILITATION MODULE', () => {
     });
 
     it('CREATED WITH EMAIL', async () => {
-      const client: Client = await createClient();
+      const client: Client2 = await createClient();
       const codeCommune: string = '91534';
       const emailCommune: string = 'saclay@test.fr';
       // MOCK AXIOS
@@ -197,7 +241,7 @@ describe('HABILITATION MODULE', () => {
         emailCommune,
         strategy: null,
         expiresAt: null,
-        client: client._id.toHexString(),
+        clientId: client.id,
         status: StatusHabilitationEnum.PENDING,
       };
 
@@ -219,11 +263,11 @@ describe('HABILITATION MODULE', () => {
     });
 
     it('GET /habilitations/:habilitationId', async () => {
-      const client: Client = await createClient();
+      const client: Client2 = await createClient();
       const habilitation = {
         codeCommune: '94000',
         emailCommune: 'test@test.fr',
-        client: client._id,
+        clientId: client.id,
         status: StatusHabilitationEnum.PENDING,
         strategy: {
           type: TypeStrategyEnum.EMAIL,
@@ -231,17 +275,17 @@ describe('HABILITATION MODULE', () => {
         },
       };
 
-      const { _id } = await habilitationModel.create(habilitation);
+      const { id } = await createHabilitation(habilitation);
 
       const { body } = await request(app.getHttpServer())
-        .get(`/habilitations/${_id}`)
+        .get(`/habilitations/${id}`)
         .set('authorization', `Bearer ${client.token}`)
         .expect(200);
 
       const res = {
         ...omit(habilitation, 'strategy.pinCode'),
         client: {
-          _id: client._id.toHexString(),
+          id: client.id,
           nom: 'test',
           mandataire: 'mandataire',
           chefDeFile: 'chefDeFile',
@@ -264,10 +308,10 @@ describe('HABILITATION MODULE', () => {
         },
       };
 
-      const { _id } = await habilitationModel.create(habilitation);
+      const { id } = await createHabilitation(habilitation);
 
       await request(app.getHttpServer())
-        .put(`/habilitations/${_id}/validate`)
+        .put(`/habilitations/${id}/validate`)
         .expect(403);
     });
 
@@ -282,10 +326,10 @@ describe('HABILITATION MODULE', () => {
         },
       };
 
-      const { _id } = await habilitationModel.create(habilitation);
+      const { id } = await createHabilitation(habilitation);
 
       const { body } = await request(app.getHttpServer())
-        .put(`/habilitations/${_id}/validate`)
+        .put(`/habilitations/${id}/validate`)
         .set('authorization', `Token ${process.env.ADMIN_TOKEN}`)
         .expect(200);
 
@@ -308,10 +352,10 @@ describe('HABILITATION MODULE', () => {
         },
       };
 
-      const { _id } = await habilitationModel.create(habilitation);
+      const { id } = await createHabilitation(habilitation);
 
       const { body } = await request(app.getHttpServer())
-        .put(`/habilitations/${_id}/validate`)
+        .put(`/habilitations/${id}/validate`)
         .set('authorization', `Bearer ${process.env.ADMIN_TOKEN}`)
         .expect(200);
 
@@ -326,83 +370,84 @@ describe('HABILITATION MODULE', () => {
 
   describe('POST /habilitations/:habilitationId/authentication/email/send-pin-code', () => {
     it('SEND CODE PIN ALREADY ACCEPETED', async () => {
-      const client: Client = await createClient();
+      const client: Client2 = await createClient();
       const habilitation = {
         codeCommune: '94000',
         emailCommune: 'test@test.fr',
         status: StatusHabilitationEnum.ACCEPTED,
       };
 
-      const { _id } = await habilitationModel.create(habilitation);
+      const { id } = await createHabilitation(habilitation);
 
       await request(app.getHttpServer())
-        .post(`/habilitations/${_id}/authentication/email/send-pin-code`)
+        .post(`/habilitations/${id}/authentication/email/send-pin-code`)
         .set('authorization', `Bearer ${client.token}`)
         .expect(412);
     });
 
     it('SEND CODE PIN ALREADY REJECTED', async () => {
-      const client: Client = await createClient();
+      const client: Client2 = await createClient();
       const habilitation = {
         codeCommune: '94000',
         emailCommune: 'test@test.fr',
         status: StatusHabilitationEnum.REJECTED,
       };
 
-      const { _id } = await habilitationModel.create(habilitation);
+      const { id } = await createHabilitation(habilitation);
 
       await request(app.getHttpServer())
-        .post(`/habilitations/${_id}/authentication/email/send-pin-code`)
+        .post(`/habilitations/${id}/authentication/email/send-pin-code`)
         .set('authorization', `Bearer ${client.token}`)
         .expect(412);
     });
 
     it('SEND CODE PIN NO EMAIL', async () => {
-      const client: Client = await createClient();
+      const client: Client2 = await createClient();
       const habilitation = {
         codeCommune: '94000',
         status: StatusHabilitationEnum.PENDING,
       };
 
-      const { _id } = await habilitationModel.create(habilitation);
+      const { id } = await createHabilitation(habilitation);
 
       await request(app.getHttpServer())
-        .post(`/habilitations/${_id}/authentication/email/send-pin-code`)
+        .post(`/habilitations/${id}/authentication/email/send-pin-code`)
         .set('authorization', `Bearer ${client.token}`)
         .expect(412);
     });
 
     it('SEND CODE PIN ALREADY SEND', async () => {
-      const client: Client = await createClient();
+      const client: Client2 = await createClient();
       const habilitation = {
         codeCommune: '94000',
         emailCommune: 'test@test.fr',
         status: StatusHabilitationEnum.PENDING,
         strategy: {
+          type: TypeStrategyEnum.EMAIL,
           createdAt: new Date(),
         },
       };
 
-      const { _id } = await habilitationModel.create(habilitation);
+      const { id } = await createHabilitation(habilitation);
 
       await request(app.getHttpServer())
-        .post(`/habilitations/${_id}/authentication/email/send-pin-code`)
+        .post(`/habilitations/${id}/authentication/email/send-pin-code`)
         .set('authorization', `Bearer ${client.token}`)
         .expect(409);
     });
 
     it('SEND CODE PIN ALREADY SEND', async () => {
-      const client: Client = await createClient();
+      const client: Client2 = await createClient();
       const habilitation = {
         codeCommune: '91534',
         emailCommune: 'test@test.fr',
         status: StatusHabilitationEnum.PENDING,
       };
 
-      const { _id } = await habilitationModel.create(habilitation);
+      const { id } = await createHabilitation(habilitation);
 
       await request(app.getHttpServer())
-        .post(`/habilitations/${_id}/authentication/email/send-pin-code`)
+        .post(`/habilitations/${id}/authentication/email/send-pin-code`)
         .set('authorization', `Bearer ${client.token}`)
         .expect(200);
     });
@@ -410,58 +455,58 @@ describe('HABILITATION MODULE', () => {
 
   describe('POST /habilitations/:habilitationId/authentication/email/validate-pin-code', () => {
     it('VALIDATE CODE PIN ALREADY ACCEPETED', async () => {
-      const client: Client = await createClient();
+      const client: Client2 = await createClient();
       const habilitation = {
         codeCommune: '94000',
         emailCommune: 'test@test.fr',
         status: StatusHabilitationEnum.ACCEPTED,
       };
 
-      const { _id } = await habilitationModel.create(habilitation);
+      const { id } = await createHabilitation(habilitation);
 
       await request(app.getHttpServer())
-        .post(`/habilitations/${_id}/authentication/email/validate-pin-code`)
+        .post(`/habilitations/${id}/authentication/email/validate-pin-code`)
         .set('authorization', `Bearer ${client.token}`)
         .send({ code: '0000' })
         .expect(412);
     });
 
     it('VALIDATE CODE PIN ALREADY ACCEPETED', async () => {
-      const client: Client = await createClient();
+      const client: Client2 = await createClient();
       const habilitation = {
         codeCommune: '94000',
         emailCommune: 'test@test.fr',
         status: StatusHabilitationEnum.REJECTED,
       };
 
-      const { _id } = await habilitationModel.create(habilitation);
+      const { id } = await createHabilitation(habilitation);
 
       await request(app.getHttpServer())
-        .post(`/habilitations/${_id}/authentication/email/validate-pin-code`)
+        .post(`/habilitations/${id}/authentication/email/validate-pin-code`)
         .set('authorization', `Bearer ${client.token}`)
         .send({ code: '0000' })
         .expect(412);
     });
 
     it('VALIDATE CODE PIN BAD CODE', async () => {
-      const client: Client = await createClient();
+      const client: Client2 = await createClient();
       const habilitation = {
         codeCommune: '94000',
         emailCommune: 'test@test.fr',
         status: StatusHabilitationEnum.PENDING,
         strategy: {
-          type: 'email',
+          type: TypeStrategyEnum.EMAIL,
           pinCodeExpiration: add(new Date(), { years: 1 }),
           pinCode: '0000',
-          createdAt: '2024-05-27T09:19:07.770Z',
+          createdAt: new Date('2024-05-27T09:19:07.770Z'),
           remainingAttempts: 0,
         },
       };
 
-      const { _id } = await habilitationModel.create(habilitation);
+      const { id } = await createHabilitation(habilitation);
 
       const { body } = await request(app.getHttpServer())
-        .post(`/habilitations/${_id}/authentication/email/validate-pin-code`)
+        .post(`/habilitations/${id}/authentication/email/validate-pin-code`)
         .set('authorization', `Bearer ${client.token}`)
         .send({ code: '1111' })
         .expect(412);
@@ -470,33 +515,36 @@ describe('HABILITATION MODULE', () => {
         statusCode: 412,
         message: 'Code non valide. Demande rejetée.',
       });
-
-      const afterHabilitation = await habilitationModel.findById(_id);
+      const afterHabilitation = await habilitationRepository.findOneBy({ id });
       expect(afterHabilitation.rejectedAt).toBeDefined();
+      expect(afterHabilitation.strategy).toMatchObject({
+        type: 'email',
+        authenticationError: 'Trop de tentative de code raté',
+      });
       expect(afterHabilitation.status).toBe(StatusHabilitationEnum.REJECTED);
-      expect(afterHabilitation.acceptedAt).not.toBeDefined();
-      expect(afterHabilitation.expiresAt).not.toBeDefined();
+      expect(afterHabilitation.acceptedAt).toBeNull();
+      expect(afterHabilitation.expiresAt).toBeNull();
     });
 
     it('VALIDATE CODE PIN BAD CODE', async () => {
-      const client: Client = await createClient();
+      const client: Client2 = await createClient();
       const habilitation = {
         codeCommune: '94000',
         emailCommune: 'test@test.fr',
         status: StatusHabilitationEnum.PENDING,
         strategy: {
-          type: 'email',
+          type: TypeStrategyEnum.EMAIL,
           pinCodeExpiration: add(new Date(), { years: 1 }),
           pinCode: '0000',
-          createdAt: '2024-05-27T09:19:07.770Z',
+          createdAt: new Date('2024-05-27T09:19:07.770Z'),
           remainingAttempts: 10,
         },
       };
 
-      const { _id } = await habilitationModel.create(habilitation);
+      const { id } = await createHabilitation(habilitation);
 
       const { body } = await request(app.getHttpServer())
-        .post(`/habilitations/${_id}/authentication/email/validate-pin-code`)
+        .post(`/habilitations/${id}/authentication/email/validate-pin-code`)
         .set('authorization', `Bearer ${client.token}`)
         .send({ code: '1111' })
         .expect(412);
@@ -506,31 +554,31 @@ describe('HABILITATION MODULE', () => {
         message: 'Code non valide, 9 tentatives restantes',
       });
 
-      const afterHabilitation = await habilitationModel.findById(_id);
+      const afterHabilitation = await habilitationRepository.findOneBy({ id });
       expect(afterHabilitation.status).toBe(StatusHabilitationEnum.PENDING);
-      expect(afterHabilitation.acceptedAt).not.toBeDefined();
-      expect(afterHabilitation.expiresAt).not.toBeDefined();
+      expect(afterHabilitation.acceptedAt).toBeNull();
+      expect(afterHabilitation.expiresAt).toBeNull();
     });
 
     it('VALIDATE CODE PIN DATE EXPIRE', async () => {
-      const client: Client = await createClient();
+      const client: Client2 = await createClient();
       const habilitation = {
         codeCommune: '94000',
         emailCommune: 'test@test.fr',
         status: StatusHabilitationEnum.PENDING,
         strategy: {
-          type: 'email',
+          type: TypeStrategyEnum.EMAIL,
           pinCodeExpiration: sub(new Date(), { years: 1 }),
           pinCode: '0000',
-          createdAt: '2024-05-27T09:19:07.770Z',
+          createdAt: new Date('2024-05-27T09:19:07.770Z'),
           remainingAttempts: 10,
         },
       };
 
-      const { _id } = await habilitationModel.create(habilitation);
+      const { id } = await createHabilitation(habilitation);
 
       const { body } = await request(app.getHttpServer())
-        .post(`/habilitations/${_id}/authentication/email/validate-pin-code`)
+        .post(`/habilitations/${id}/authentication/email/validate-pin-code`)
         .set('authorization', `Bearer ${client.token}`)
         .send({ code: '0000' })
         .expect(412);
@@ -540,36 +588,36 @@ describe('HABILITATION MODULE', () => {
         message: 'Code expiré',
       });
 
-      const afterHabilitation = await habilitationModel.findById(_id);
+      const afterHabilitation = await habilitationRepository.findOneBy({ id });
       expect(afterHabilitation.status).toBe(StatusHabilitationEnum.PENDING);
-      expect(afterHabilitation.acceptedAt).not.toBeDefined();
-      expect(afterHabilitation.expiresAt).not.toBeDefined();
+      expect(afterHabilitation.acceptedAt).toBeNull();
+      expect(afterHabilitation.expiresAt).toBeNull();
     });
 
     it('VALIDATE CODE PIN', async () => {
-      const client: Client = await createClient();
+      const client: Client2 = await createClient();
       const habilitation = {
         codeCommune: '94000',
         emailCommune: 'test@test.fr',
         status: StatusHabilitationEnum.PENDING,
         strategy: {
-          type: 'email',
+          type: TypeStrategyEnum.EMAIL,
           pinCodeExpiration: add(new Date(), { years: 1 }),
           pinCode: '0000',
-          createdAt: '2024-05-27T09:19:07.770Z',
+          createdAt: new Date('2024-05-27T09:19:07.770Z'),
           remainingAttempts: 10,
         },
       };
 
-      const { _id } = await habilitationModel.create(habilitation);
+      const { id } = await createHabilitation(habilitation);
 
       await request(app.getHttpServer())
-        .post(`/habilitations/${_id}/authentication/email/validate-pin-code`)
+        .post(`/habilitations/${id}/authentication/email/validate-pin-code`)
         .set('authorization', `Bearer ${client.token}`)
         .send({ code: '0000' })
         .expect(200);
 
-      const afterHabilitation = await habilitationModel.findById(_id);
+      const afterHabilitation = await habilitationRepository.findOneBy({ id });
       expect(afterHabilitation.status).toBe(StatusHabilitationEnum.ACCEPTED);
       expect(afterHabilitation.acceptedAt).toBeDefined();
       expect(afterHabilitation.expiresAt).toBeDefined();
