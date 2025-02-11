@@ -42,7 +42,7 @@ describe('API ANNUAIRE MODULE', () => {
           },
           {
             nom: 'mairie deleguee',
-            adresse_courriel: 'no@test.fr',
+            adresse_courriel: 'ok2@test.fr;ok3@test.fr',
           },
         ],
       };
@@ -52,31 +52,8 @@ describe('API ANNUAIRE MODULE', () => {
         )
         .reply(200, data);
 
-      const email = await apiAnnuaireService.getEmailCommune(codeCommune);
-      expect(email).toBe('ok@test.fr');
-    });
-
-    it('getEmailCommune multi email', async () => {
-      const codeCommune = '91400';
-
-      // MOCK AXIOS
-      const data: any = {
-        results: [
-          {
-            nom: 'mairie principal',
-            adresse_courriel: 'ok@test.fr;wrong@test.fr',
-          },
-        ],
-      };
-      axiosMock
-        .onGet(
-          `/catalog/datasets/api-lannuaire-administration/records?where=pivot%20LIKE%20"mairie"%20AND%20code_insee_commune="${codeCommune}"&limit=100`,
-        )
-        .reply(200, data);
-
-      const email = await apiAnnuaireService.getEmailCommune(codeCommune);
-
-      expect(email).toBe('ok@test.fr');
+      const emails = await apiAnnuaireService.getEmailsCommune(codeCommune);
+      expect(emails).toEqual(['ok@test.fr', 'ok2@test.fr', 'ok3@test.fr']);
     });
 
     it('getEmailCommune only mairie deleguee', async () => {
@@ -97,9 +74,9 @@ describe('API ANNUAIRE MODULE', () => {
         )
         .reply(200, data);
 
-      const email = await apiAnnuaireService.getEmailCommune(codeCommune);
+      const email = await apiAnnuaireService.getEmailsCommune(codeCommune);
 
-      expect(email).toBe('ok@ok.fr');
+      expect(email).toEqual(['ok@ok.fr']);
     });
 
     it('getEmailCommune multi email', async () => {
@@ -120,13 +97,13 @@ describe('API ANNUAIRE MODULE', () => {
         )
         .reply(200, data);
 
-      const email = await apiAnnuaireService.getEmailCommune(codeCommune);
+      const email = await apiAnnuaireService.getEmailsCommune(codeCommune);
       expect(email).toBeUndefined();
     });
 
     it('getEmailCommune multi email', async () => {
       const codeCommune = '91400';
-      const email = await apiAnnuaireService.getEmailCommune(codeCommune);
+      const email = await apiAnnuaireService.getEmailsCommune(codeCommune);
       expect(email).toBeUndefined();
     });
   });

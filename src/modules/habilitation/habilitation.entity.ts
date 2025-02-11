@@ -60,8 +60,8 @@ export class Habilitation extends IdEntity {
   codeCommune: string;
 
   @ApiProperty()
-  @Column('text', { nullable: true, name: 'email_commune' })
-  emailCommune: string;
+  @Column('text', { nullable: true, array: true, name: 'emails_commune' })
+  emailsCommune: string[];
 
   @ApiProperty()
   @Column('text', {

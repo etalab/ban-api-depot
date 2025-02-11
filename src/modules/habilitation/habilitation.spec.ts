@@ -215,13 +215,16 @@ describe('HABILITATION MODULE', () => {
     it('CREATED WITH EMAIL', async () => {
       const client: Client2 = await createClient();
       const codeCommune: string = '91534';
-      const emailCommune: string = 'saclay@test.fr';
       // MOCK AXIOS
       const data: any = {
         results: [
           {
             nom: 'mairie principal',
-            adresse_courriel: emailCommune,
+            adresse_courriel: 'saclay@test.fr',
+          },
+          {
+            nom: 'mairie Déléguée',
+            adresse_courriel: 'saclay2@test.fr',
           },
         ],
       };
@@ -238,7 +241,7 @@ describe('HABILITATION MODULE', () => {
 
       const hab = {
         codeCommune,
-        emailCommune,
+        emailsCommune: ['saclay@test.fr', 'saclay2@test.fr'],
         strategy: null,
         expiresAt: null,
         clientId: client.id,
@@ -264,9 +267,9 @@ describe('HABILITATION MODULE', () => {
 
     it('GET /habilitations/:habilitationId', async () => {
       const client: Client2 = await createClient();
-      const habilitation = {
+      const habilitation: Partial<Habilitation> = {
         codeCommune: '94000',
-        emailCommune: 'test@test.fr',
+        emailsCommune: ['test@test.fr'],
         clientId: client.id,
         status: StatusHabilitationEnum.PENDING,
         strategy: {
@@ -298,9 +301,9 @@ describe('HABILITATION MODULE', () => {
 
   describe('PUT /habilitations/:habilitationId/validate', () => {
     it('ADMIN GUARD NO TOKEN', async () => {
-      const habilitation = {
+      const habilitation: Partial<Habilitation> = {
         codeCommune: '94000',
-        emailCommune: 'test@test.fr',
+        emailsCommune: ['test@test.fr'],
         status: StatusHabilitationEnum.PENDING,
         strategy: {
           type: TypeStrategyEnum.EMAIL,
@@ -316,9 +319,9 @@ describe('HABILITATION MODULE', () => {
     });
 
     it('ADMIN GUARD TOKEN', async () => {
-      const habilitation = {
+      const habilitation: Partial<Habilitation> = {
         codeCommune: '94000',
-        emailCommune: 'test@test.fr',
+        emailsCommune: ['test@test.fr'],
         status: StatusHabilitationEnum.PENDING,
         strategy: {
           type: TypeStrategyEnum.EMAIL,
@@ -342,9 +345,9 @@ describe('HABILITATION MODULE', () => {
     });
 
     it('ADMIN GUARD BEARER AND CHECK VALIDATE', async () => {
-      const habilitation = {
+      const habilitation: Partial<Habilitation> = {
         codeCommune: '94000',
-        emailCommune: 'test@test.fr',
+        emailsCommune: ['test@test.fr'],
         status: StatusHabilitationEnum.PENDING,
         strategy: {
           type: TypeStrategyEnum.EMAIL,
@@ -371,9 +374,9 @@ describe('HABILITATION MODULE', () => {
   describe('POST /habilitations/:habilitationId/authentication/email/send-pin-code', () => {
     it('SEND CODE PIN ALREADY ACCEPETED', async () => {
       const client: Client2 = await createClient();
-      const habilitation = {
+      const habilitation: Partial<Habilitation> = {
         codeCommune: '94000',
-        emailCommune: 'test@test.fr',
+        emailsCommune: ['test@test.fr'],
         status: StatusHabilitationEnum.ACCEPTED,
       };
 
@@ -387,9 +390,9 @@ describe('HABILITATION MODULE', () => {
 
     it('SEND CODE PIN ALREADY REJECTED', async () => {
       const client: Client2 = await createClient();
-      const habilitation = {
+      const habilitation: Partial<Habilitation> = {
         codeCommune: '94000',
-        emailCommune: 'test@test.fr',
+        emailsCommune: ['test@test.fr'],
         status: StatusHabilitationEnum.REJECTED,
       };
 
@@ -418,9 +421,9 @@ describe('HABILITATION MODULE', () => {
 
     it('SEND CODE PIN ALREADY SEND', async () => {
       const client: Client2 = await createClient();
-      const habilitation = {
+      const habilitation: Partial<Habilitation> = {
         codeCommune: '94000',
-        emailCommune: 'test@test.fr',
+        emailsCommune: ['test@test.fr'],
         status: StatusHabilitationEnum.PENDING,
         strategy: {
           type: TypeStrategyEnum.EMAIL,
@@ -438,9 +441,9 @@ describe('HABILITATION MODULE', () => {
 
     it('SEND CODE PIN ALREADY SEND', async () => {
       const client: Client2 = await createClient();
-      const habilitation = {
+      const habilitation: Partial<Habilitation> = {
         codeCommune: '91534',
-        emailCommune: 'test@test.fr',
+        emailsCommune: ['test@test.fr'],
         status: StatusHabilitationEnum.PENDING,
       };
 
@@ -456,9 +459,9 @@ describe('HABILITATION MODULE', () => {
   describe('POST /habilitations/:habilitationId/authentication/email/validate-pin-code', () => {
     it('VALIDATE CODE PIN ALREADY ACCEPETED', async () => {
       const client: Client2 = await createClient();
-      const habilitation = {
+      const habilitation: Partial<Habilitation> = {
         codeCommune: '94000',
-        emailCommune: 'test@test.fr',
+        emailsCommune: ['test@test.fr'],
         status: StatusHabilitationEnum.ACCEPTED,
       };
 
@@ -473,9 +476,9 @@ describe('HABILITATION MODULE', () => {
 
     it('VALIDATE CODE PIN ALREADY ACCEPETED', async () => {
       const client: Client2 = await createClient();
-      const habilitation = {
+      const habilitation: Partial<Habilitation> = {
         codeCommune: '94000',
-        emailCommune: 'test@test.fr',
+        emailsCommune: ['test@test.fr'],
         status: StatusHabilitationEnum.REJECTED,
       };
 
@@ -490,9 +493,9 @@ describe('HABILITATION MODULE', () => {
 
     it('VALIDATE CODE PIN BAD CODE', async () => {
       const client: Client2 = await createClient();
-      const habilitation = {
+      const habilitation: Partial<Habilitation> = {
         codeCommune: '94000',
-        emailCommune: 'test@test.fr',
+        emailsCommune: ['test@test.fr'],
         status: StatusHabilitationEnum.PENDING,
         strategy: {
           type: TypeStrategyEnum.EMAIL,
@@ -528,9 +531,9 @@ describe('HABILITATION MODULE', () => {
 
     it('VALIDATE CODE PIN BAD CODE', async () => {
       const client: Client2 = await createClient();
-      const habilitation = {
+      const habilitation: Partial<Habilitation> = {
         codeCommune: '94000',
-        emailCommune: 'test@test.fr',
+        emailsCommune: ['test@test.fr'],
         status: StatusHabilitationEnum.PENDING,
         strategy: {
           type: TypeStrategyEnum.EMAIL,
@@ -562,9 +565,9 @@ describe('HABILITATION MODULE', () => {
 
     it('VALIDATE CODE PIN DATE EXPIRE', async () => {
       const client: Client2 = await createClient();
-      const habilitation = {
+      const habilitation: Partial<Habilitation> = {
         codeCommune: '94000',
-        emailCommune: 'test@test.fr',
+        emailsCommune: ['test@test.fr'],
         status: StatusHabilitationEnum.PENDING,
         strategy: {
           type: TypeStrategyEnum.EMAIL,
@@ -596,9 +599,9 @@ describe('HABILITATION MODULE', () => {
 
     it('VALIDATE CODE PIN', async () => {
       const client: Client2 = await createClient();
-      const habilitation = {
+      const habilitation: Partial<Habilitation> = {
         codeCommune: '94000',
-        emailCommune: 'test@test.fr',
+        emailsCommune: ['test@test.fr'],
         status: StatusHabilitationEnum.PENDING,
         strategy: {
           type: TypeStrategyEnum.EMAIL,
